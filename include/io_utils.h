@@ -7,6 +7,8 @@
 typedef struct ProgramOptions {
     const char *input_path;
     const char *output_path;
+    const char *timing_csv_path;
+    const char *run_id;
     int demo_degree;
     int verify;
     int quiet;

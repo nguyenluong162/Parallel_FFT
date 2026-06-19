@@ -16,6 +16,8 @@ typedef struct PolynomialProduct {
     Polynomial result;
     size_t fft_size;
     double elapsed_seconds;
+    double compute_seconds;
+    double communication_seconds;
     double max_rounding_error;
 } PolynomialProduct;
 

@@ -1,0 +1,5 @@
+run_id,mode,input_size,degree_a,degree_b,fft_size,processes,rank,host,kernel_total_s,compute_s,communication_s,program_s
+n4096-p4-test,mpi,4096,4095,4095,8192,4,0,Mac-cua-Nguynnn.local,0.000692000,0.000430000,0.000262000,0.001134000
+n4096-p4-test,mpi,4096,4095,4095,8192,4,1,Mac-cua-Nguynnn.local,0.000693000,0.000421000,0.000272000,0.001084000
+n4096-p4-test,mpi,4096,4095,4095,8192,4,2,Mac-cua-Nguynnn.local,0.000694000,0.000436000,0.000258000,0.001101000
+n4096-p4-test,mpi,4096,4095,4095,8192,4,3,Mac-cua-Nguynnn.local,0.000692000,0.000424000,0.000268000,0.001102000

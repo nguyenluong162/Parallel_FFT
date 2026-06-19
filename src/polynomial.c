@@ -232,6 +232,8 @@ int polynomial_multiply_serial(const Polynomial *a,
     product->result = polynomial_empty();
     product->fft_size = polynomial_required_fft_size(a, b);
     product->elapsed_seconds = 0.0;
+    product->compute_seconds = 0.0;
+    product->communication_seconds = 0.0;
     product->max_rounding_error = 0.0;
 
     size_t n = product->fft_size;
@@ -259,6 +261,7 @@ int polynomial_multiply_serial(const Polynomial *a,
     }
     fft_serial(fa, n, FFT_INVERSE);
     product->elapsed_seconds = now_mpi_seconds() - start;
+    product->compute_seconds = product->elapsed_seconds;
     extract_coefficients(&product->result,
                          fa,
                          result_length,
@@ -289,6 +292,8 @@ int polynomial_multiply_mpi(const Polynomial *a,
     product->result = polynomial_empty();
     product->fft_size = polynomial_required_fft_size(a, b);
     product->elapsed_seconds = 0.0;
+    product->compute_seconds = 0.0;
+    product->communication_seconds = 0.0;
     product->max_rounding_error = 0.0;
     size_t n = product->fft_size;
     size_t result_length = a->length + b->length - 1;
@@ -306,14 +311,22 @@ int polynomial_multiply_mpi(const Polynomial *a,
         return 0;
     }
 
+    mpi_fft_profile_reset();
     double start = MPI_Wtime();
+    mpi_fft_profile_barrier(comm);
     load_coefficients(fa, n, a);
     load_coefficients(fb, n, b);
     mpi_fft(fa, n, FFT_FORWARD, comm);
     mpi_fft(fb, n, FFT_FORWARD, comm);
     multiply_pointwise_replicated(fa, fb, n);
     mpi_fft(fa, n, FFT_INVERSE, comm);
+    mpi_fft_profile_barrier(comm);
     product->elapsed_seconds = MPI_Wtime() - start;
+    product->communication_seconds = mpi_fft_profile_communication_seconds();
+    product->compute_seconds = product->elapsed_seconds - product->communication_seconds;
+    if (product->compute_seconds < 0.0) {
+        product->compute_seconds = 0.0;
+    }
 
     extract_coefficients(&product->result,
                          fa,
@@ -353,5 +366,7 @@ void polynomial_product_destroy(PolynomialProduct *product) {
     polynomial_destroy(&product->result);
     product->fft_size = 0;
     product->elapsed_seconds = 0.0;
+    product->compute_seconds = 0.0;
+    product->communication_seconds = 0.0;
     product->max_rounding_error = 0.0;
 }

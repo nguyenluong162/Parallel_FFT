@@ -253,11 +253,45 @@ scripts/count_code_lines.sh
 --output <file>     ghi output ra file
 --demo <degree>     sinh input demo với đa thức bậc degree
 --serial            chạy FFT tuần tự
+--timing-csv <file> append thời gian của từng MPI rank vào file CSV
+--run-id <label>    nhãn của một lần chạy benchmark (không chứa dấu phẩy)
 --no-verify         bỏ kiểm tra bằng nhân naive O(n^2)
 --quiet             chỉ in thông tin ngắn
 --print             in A(x), B(x), C(x)
 --help              in hướng dẫn CLI
 ```
+
+## Đo Thời Gian Experiment
+
+Ví dụ ghi số liệu của 4 rank vào CSV:
+
+```sh
+/opt/homebrew/bin/mpirun -np 4 ./bin/parallel_fft_poly \
+  --demo 4095 --quiet --no-verify \
+  --timing-csv build/timings.csv --run-id n4096-p4-r1
+```
+
+File CSV được append qua nhiều lần chạy và có một dòng cho mỗi rank. Các cột
+thời gian có ý nghĩa:
+
+```text
+kernel_total_s    toàn bộ kernel nhân FFT, có tính thời gian MPI
+compute_s         kernel_total_s trừ thời gian trong các lời gọi MPI
+communication_s   MPI barrier, broadcast, all-reduce và quản lý communicator
+program_s         từ ngay sau MPI_Init tới điểm đồng bộ trước khi ghi CSV
+```
+
+`kernel_total_s = compute_s + communication_s` trên từng rank. `program_s`
+bao gồm đọc/sinh input, broadcast input, kiểm tra và ghi kết quả nếu các chức
+năng đó được bật. Nó không thể bao gồm launcher, `MPI_Init`, `MPI_Finalize`;
+để đo đúng wall-clock từ ngoài chương trình, dùng thêm:
+
+```sh
+/usr/bin/time -p /opt/homebrew/bin/mpirun ...
+```
+
+Khi benchmark nên dùng `--no-verify`, không dùng `--print` hay `--output`, chạy
+một lần warm-up rồi ít nhất 5 lần đo với các `run-id` khác nhau và lấy median.
 
 ## Ghi Chú Về MPI
 

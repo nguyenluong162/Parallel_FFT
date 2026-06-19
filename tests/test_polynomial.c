@@ -13,6 +13,8 @@ static int check_polynomial_case(const double *a_values,
     product.result = polynomial_empty();
     product.fft_size = 0;
     product.elapsed_seconds = 0.0;
+    product.compute_seconds = 0.0;
+    product.communication_seconds = 0.0;
     product.max_rounding_error = 0.0;
 
     int ok = polynomial_from_array(&a, a_values, a_length) &&
@@ -57,6 +59,8 @@ static int test_demo_case(void) {
     product.result = polynomial_empty();
     product.fft_size = 0;
     product.elapsed_seconds = 0.0;
+    product.compute_seconds = 0.0;
+    product.communication_seconds = 0.0;
     product.max_rounding_error = 0.0;
 
     int ok = polynomial_init(&a, 31) && polynomial_init(&b, 31);

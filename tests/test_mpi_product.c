@@ -1,4 +1,5 @@
 #include <mpi.h>
+#include <math.h>
 #include <stdio.h>
 
 #include "polynomial.h"
@@ -24,9 +25,24 @@ static int check_mpi_dnc(const Polynomial *a,
     product.result = polynomial_empty();
     product.fft_size = 0;
     product.elapsed_seconds = 0.0;
+    product.compute_seconds = 0.0;
+    product.communication_seconds = 0.0;
     product.max_rounding_error = 0.0;
 
     int ok = polynomial_multiply_mpi(a, b, &product, MPI_COMM_WORLD);
+    if (ok) {
+        double timing_error = fabs(product.elapsed_seconds -
+                                   product.compute_seconds -
+                                   product.communication_seconds);
+        ok = product.elapsed_seconds >= 0.0 &&
+             product.compute_seconds >= 0.0 &&
+             product.communication_seconds >= 0.0 &&
+             timing_error <= 1.0e-9;
+        if (!ok) {
+            fprintf(stderr, "Rank %d timing accounting error %.6e\n",
+                    rank, timing_error);
+        }
+    }
     if (rank == 0 && ok) {
         double error = polynomial_max_abs_error(naive, &product.result);
         ok = error <= 1.0e-6;

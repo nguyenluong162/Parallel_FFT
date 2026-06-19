@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "io_utils.h"
 #include "polynomial.h"
@@ -92,8 +93,105 @@ static int run_mpi_product(const Polynomial *a,
     return polynomial_multiply_mpi(a, b, product, comm);
 }
 
+static int append_timing_csv(const ProgramOptions *options,
+                             const Polynomial *a,
+                             const Polynomial *b,
+                             const PolynomialProduct *product,
+                             double program_start,
+                             MPI_Comm comm) {
+    if (options == NULL || options->timing_csv_path == NULL) {
+        return 1;
+    }
+
+    int rank = 0;
+    int comm_size = 1;
+    MPI_Comm_rank(comm, &rank);
+    MPI_Comm_size(comm, &comm_size);
+
+    MPI_Barrier(comm);
+    double local_values[4] = {
+        product->elapsed_seconds,
+        product->compute_seconds,
+        product->communication_seconds,
+        MPI_Wtime() - program_start
+    };
+
+    char processor_name[MPI_MAX_PROCESSOR_NAME] = {0};
+    int processor_name_length = 0;
+    MPI_Get_processor_name(processor_name, &processor_name_length);
+    (void)processor_name_length;
+
+    double *all_values = NULL;
+    char *all_names = NULL;
+    int export_ok = 1;
+    if (rank == root_rank()) {
+        all_values = (double *)calloc((size_t)comm_size * 4U, sizeof(double));
+        all_names = (char *)calloc((size_t)comm_size,
+                                   (size_t)MPI_MAX_PROCESSOR_NAME);
+        export_ok = all_values != NULL && all_names != NULL;
+    }
+    MPI_Bcast(&export_ok, 1, MPI_INT, root_rank(), comm);
+    if (!export_ok) {
+        free(all_values);
+        free(all_names);
+        return 0;
+    }
+
+    MPI_Gather(local_values, 4, MPI_DOUBLE,
+               all_values, 4, MPI_DOUBLE, root_rank(), comm);
+    MPI_Gather(processor_name, MPI_MAX_PROCESSOR_NAME, MPI_CHAR,
+               all_names, MPI_MAX_PROCESSOR_NAME, MPI_CHAR, root_rank(), comm);
+
+    if (rank == root_rank()) {
+        FILE *file = fopen(options->timing_csv_path, "a+");
+        if (file == NULL) {
+            export_ok = 0;
+        } else {
+            if (fseek(file, 0L, SEEK_END) != 0) {
+                export_ok = 0;
+            } else if (ftell(file) == 0L) {
+                fprintf(file,
+                        "run_id,mode,input_size,degree_a,degree_b,fft_size,"
+                        "processes,rank,host,kernel_total_s,compute_s,"
+                        "communication_s,program_s\n");
+            }
+
+            char generated_run_id[64];
+            const char *run_id = options->run_id;
+            if (run_id == NULL) {
+                snprintf(generated_run_id, sizeof(generated_run_id),
+                         "run-%lld", (long long)time(NULL));
+                run_id = generated_run_id;
+            }
+            size_t input_size = a->length > b->length ? a->length : b->length;
+            const char *mode = options->use_serial ? "serial" : "mpi";
+            for (int i = 0; export_ok && i < comm_size; ++i) {
+                const double *values = &all_values[4 * i];
+                const char *name = &all_names[(size_t)i * MPI_MAX_PROCESSOR_NAME];
+                if (fprintf(file,
+                            "%s,%s,%zu,%zu,%zu,%zu,%d,%d,%s,"
+                            "%.9f,%.9f,%.9f,%.9f\n",
+                            run_id, mode, input_size, a->degree, b->degree,
+                            product->fft_size, comm_size, i, name,
+                            values[0], values[1], values[2], values[3]) < 0) {
+                    export_ok = 0;
+                }
+            }
+            if (fclose(file) != 0) {
+                export_ok = 0;
+            }
+        }
+    }
+
+    MPI_Bcast(&export_ok, 1, MPI_INT, root_rank(), comm);
+    free(all_values);
+    free(all_names);
+    return export_ok;
+}
+
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
+    double program_start = MPI_Wtime();
 
     int rank = 0;
     int comm_size = 1;
@@ -168,6 +266,8 @@ int main(int argc, char **argv) {
     product.result = polynomial_empty();
     product.fft_size = 0;
     product.elapsed_seconds = 0.0;
+    product.compute_seconds = 0.0;
+    product.communication_seconds = 0.0;
     product.max_rounding_error = 0.0;
 
     int ok = 1;
@@ -200,11 +300,16 @@ int main(int argc, char **argv) {
         if (!options.quiet) {
             printf("  fft size: %zu\n", product.fft_size);
             printf("  elapsed: %.6f seconds\n", product.elapsed_seconds);
+            printf("  compute: %.6f seconds\n", product.compute_seconds);
+            printf("  communication: %.6f seconds\n", product.communication_seconds);
             printf("  max rounding error: %.6e\n", product.max_rounding_error);
         } else {
-            printf("fft_size=%zu elapsed=%.6f rounding=%.6e\n",
+            printf("fft_size=%zu elapsed=%.6f compute=%.6f communication=%.6f "
+                   "rounding=%.6e\n",
                    product.fft_size,
                    product.elapsed_seconds,
+                   product.compute_seconds,
+                   product.communication_seconds,
                    product.max_rounding_error);
         }
 
@@ -227,6 +332,15 @@ int main(int argc, char **argv) {
                 printf("  output: %s\n", options.output_path);
             }
         }
+    }
+
+    if (!append_timing_csv(&options, &a, &b, &product,
+                           program_start, MPI_COMM_WORLD)) {
+        if (rank == root_rank()) {
+            fprintf(stderr, "Error writing timing CSV: %s\n",
+                    options.timing_csv_path);
+        }
+        verified = 0;
     }
 
     polynomial_product_destroy(&product);

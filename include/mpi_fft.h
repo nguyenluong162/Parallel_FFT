@@ -20,4 +20,8 @@ void mpi_complex_bcast(ComplexNumber *values,
                        int root,
                        MPI_Comm comm);
 
+void mpi_fft_profile_reset(void);
+double mpi_fft_profile_communication_seconds(void);
+void mpi_fft_profile_barrier(MPI_Comm comm);
+
 #endif

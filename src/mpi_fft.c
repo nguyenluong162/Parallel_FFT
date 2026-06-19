@@ -7,6 +7,22 @@
 #define FFT_PI 3.141592653589793238462643383279502884
 #endif
 
+static double profile_communication_seconds = 0.0;
+
+void mpi_fft_profile_reset(void) {
+    profile_communication_seconds = 0.0;
+}
+
+double mpi_fft_profile_communication_seconds(void) {
+    return profile_communication_seconds;
+}
+
+void mpi_fft_profile_barrier(MPI_Comm comm) {
+    double start = MPI_Wtime();
+    MPI_Barrier(comm);
+    profile_communication_seconds += MPI_Wtime() - start;
+}
+
 void mpi_complex_bcast(ComplexNumber *values,
                        size_t count,
                        int root,
@@ -14,7 +30,9 @@ void mpi_complex_bcast(ComplexNumber *values,
     if (values == NULL || count == 0) {
         return;
     }
+    double start = MPI_Wtime();
     MPI_Bcast((double *)values, (int)(2 * count), MPI_DOUBLE, root, comm);
+    profile_communication_seconds += MPI_Wtime() - start;
 }
 
 static void fft_serial_unscaled(ComplexNumber *values,
@@ -91,7 +109,9 @@ static void mpi_fft_dnc_kernel(ComplexNumber *values,
     int parent_root_even = 0;
     int parent_root_odd = left_size;
     MPI_Comm branch_comm = MPI_COMM_NULL;
+    double communication_start = MPI_Wtime();
     MPI_Comm_split(comm, color, rank, &branch_comm);
+    profile_communication_seconds += MPI_Wtime() - communication_start;
 
     size_t half = n >> 1;
     ComplexNumber *branch_values = complex_array_alloc(half);
@@ -99,12 +119,16 @@ static void mpi_fft_dnc_kernel(ComplexNumber *values,
     ComplexNumber *odd_values = complex_array_alloc(half);
     int local_ok = branch_values != NULL && even_values != NULL && odd_values != NULL;
     int all_ok = 0;
+    communication_start = MPI_Wtime();
     MPI_Allreduce(&local_ok, &all_ok, 1, MPI_INT, MPI_MIN, comm);
+    profile_communication_seconds += MPI_Wtime() - communication_start;
     if (!all_ok) {
         complex_array_free(branch_values);
         complex_array_free(even_values);
         complex_array_free(odd_values);
+        communication_start = MPI_Wtime();
         MPI_Comm_free(&branch_comm);
+        profile_communication_seconds += MPI_Wtime() - communication_start;
         return;
     }
 
@@ -125,7 +149,9 @@ static void mpi_fft_dnc_kernel(ComplexNumber *values,
     complex_array_free(branch_values);
     complex_array_free(even_values);
     complex_array_free(odd_values);
+    communication_start = MPI_Wtime();
     MPI_Comm_free(&branch_comm);
+    profile_communication_seconds += MPI_Wtime() - communication_start;
 }
 
 void mpi_fft_dnc(ComplexNumber *values,

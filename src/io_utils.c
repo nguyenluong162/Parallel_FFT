@@ -10,6 +10,8 @@ void program_options_default(ProgramOptions *options) {
     }
     options->input_path = NULL;
     options->output_path = NULL;
+    options->timing_csv_path = NULL;
+    options->run_id = NULL;
     options->demo_degree = 8;
     options->verify = 1;
     options->quiet = 0;
@@ -53,6 +55,17 @@ InputStatus parse_program_options(int argc,
             if (options->demo_degree < 0) {
                 return INPUT_ERR_ARGS;
             }
+        } else if (strcmp(argv[i], "--timing-csv") == 0) {
+            if (i + 1 >= argc) {
+                return INPUT_ERR_ARGS;
+            }
+            options->timing_csv_path = argv[++i];
+        } else if (strcmp(argv[i], "--run-id") == 0) {
+            if (i + 1 >= argc || strchr(argv[i + 1], ',') != NULL ||
+                strchr(argv[i + 1], '\n') != NULL) {
+                return INPUT_ERR_ARGS;
+            }
+            options->run_id = argv[++i];
         } else if (strcmp(argv[i], "--no-verify") == 0) {
             options->verify = 0;
         } else if (option_is(argv[i], "--quiet", "-q")) {
@@ -80,6 +93,8 @@ void print_usage(const char *program_name) {
     printf("  -o, --output <file>    Write result polynomial to a text file.\n");
     printf("  -d, --demo <degree>    Generate deterministic demo polynomials.\n");
     printf("      --serial           Run serial FFT instead of MPI FFT.\n");
+    printf("      --timing-csv <file> Append per-rank timing data to a CSV file.\n");
+    printf("      --run-id <label>   Label a timing run (no commas).\n");
     printf("      --no-verify        Skip naive O(n^2) verification.\n");
     printf("      --print            Print all coefficient vectors.\n");
     printf("  -q, --quiet            Print only essential lines.\n");
